@@ -2,70 +2,79 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
-from pypdf import PdfReader
+from pathlib import Path
+
+# --- IMPORT MARCU'S LOGIC ---
+# We import the specific functions we need from ingest.py
+from src.ingest import extract_text, clean_text
 from src.agent import analyze_document
-# Make sure your models are defined in src/models.py as discussed before
 
-app = FastAPI(title="Virtue Foundation Backend", version="1.0")
+app = FastAPI(title="Virtue Foundation Backend", version="1.1")
 
-# --- CRITICAL: CORS Setup for Lovable ---
-# This allows the Lovable website to send requests to your local machine
+# Allow Lovable/Frontend connection
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods (POST, GET, etc.)
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/")
 def health_check():
-    """Simple check to see if API is running."""
-    return {"status": "online", "message": "Virtue Foundation API Ready"}
+    return {"status": "online", "ingest_engine": "Marcu's Advanced Pipeline"}
 
 @app.post("/analyze")
 async def analyze_report_endpoint(file: UploadFile = File(...)):
     """
-    Receives a PDF, extracts text, runs the AI agent, and returns structured JSON.
-    Target format is optimized for Lovable UI (lists/tags).
+    1. Receives PDF from Frontend.
+    2. Uses Marcu's ingest logic (PyMuPDF/Plumber) to extract text.
+    3. Cleans text.
+    4. Sends to GPT-4o Agent.
+    5. Returns JSON to Frontend.
     """
-    temp_file_path = f"data/temp/{file.filename}"
-    os.makedirs("data/temp", exist_ok=True)
+    # Create temp directory if not exists
+    temp_dir = Path("data/temp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    
+    temp_file_path = temp_dir / file.filename
 
     try:
-        # 1. Save the uploaded file locally
+        # 1. Save file locally
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        
         print(f"📥 Received file: {file.filename}")
 
-        # 2. Extract Text (Simplified logic inline for speed)
-        reader = PdfReader(temp_file_path)
-        text_content = ""
-        for page in reader.pages:
-            text_content += page.extract_text() or ""
+        # 2. Extract Text using Marcu's robust function
+        # extract_text expects a Path object and returns a dict
+        extraction_result = extract_text(temp_file_path)
+        raw_text = extraction_result.get("text", "")
         
-        print(f"📄 Extracted {len(text_content)} characters.")
+        # 3. Clean the text
+        cleaned_text = clean_text(raw_text)
+        
+        if not cleaned_text:
+            raise HTTPException(status_code=400, detail="Could not extract any text from this document.")
 
-        # 3. Call the AI Agent (Your logic from src/agent.py)
-        # Ensure your analyze_document function returns the Pydantic model
-        result = analyze_document(text_content)
+        print(f"📄 Extracted {len(cleaned_text)} chars using {extraction_result.get('method')}")
+
+        # 4. AI Analysis
+        print("🧠 Sending to Agent...")
+        result = analyze_document(cleaned_text)
         
         if not result:
-            raise HTTPException(status_code=500, detail="AI Analysis returned empty result.")
+            raise HTTPException(status_code=500, detail="AI Agent failed to analyze text.")
 
-        # 4. Format Data for Lovable
-        # We convert the Pydantic model to a standard dictionary (JSON)
-        response_data = result.model_dump()
-        
-        # --- DEBUG: Print what we are sending ---
-        print("✅ Sending JSON to Lovable.")
-        return response_data
+        # 5. Return JSON
+        return result.model_dump()
 
     except Exception as e:
-        print(f"❌ Error processing file: {str(e)}")
-        # Return a clean error so the frontend doesn't crash blindly
+        print(f"❌ Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+        
     finally:
-        # Cleanup: remove temp file if needed, or keep for debug
+        # Optional: Clean up temp file to save space
+        # if temp_file_path.exists():
+        #     temp_file_path.unlink()
         pass
