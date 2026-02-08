@@ -97,16 +97,27 @@ Copy the forwarding URL (e.g., https://xxxx.ngrok-free.app) and configure it in 
 
 virtue-hackathon/
 ├── data/
+
 │   ├── raw/             # Drag & Drop PDFs here for testing
+
 │   └── temp/            # Temporary processing folder
+
 ├── src/
+
 │   ├── __init__.py
+
 │   ├── agent.py         # AI Logic (GPT-4o + Prompts)
+
 │   ├── api.py           # FastAPI Endpoints
+
 │   ├── ingest.py        # Advanced PDF Text Extraction
+
 │   └── models.py        # Pydantic Data Schemas (The "Source of Truth")
+
 ├── start_tunnel.py      # Auto-tunneling script
+
 ├── requirements.txt     # Python dependencies
+
 └── README.md            # You are here
 
 
